@@ -36,10 +36,19 @@ class Settings(BaseSettings):
     QDRANT_IN_MEMORY: bool = False
 
     # LLM & Embedding Settings
-    EMBEDDING_PROVIDER: str = "openai"  # "openai" or "mock"
+    EMBEDDING_PROVIDER: str = "openai"  # "openai", "openrouter", or "mock"
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_CHAT_MODEL: str = "gpt-4o-mini"
+
+    # OpenRouter Settings
+    LLM_PROVIDER: str = "openai"  # "openai", "openrouter", or "fallback"
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_CHAT_MODEL: str = "anthropic/claude-3.5-sonnet"
+    OPENROUTER_EMBEDDING_MODEL: str = "openai/text-embedding-3-small"
+    OPENROUTER_HTTP_REFERER: Optional[str] = "https://github.com/jonasstrunz/google-drive-rag-fastapi"
+    OPENROUTER_TITLE: Optional[str] = "Google Drive RAG API"
 
     # RAG & Chunking Configuration
     CHUNK_SIZE: int = 500

@@ -17,12 +17,28 @@ class EmbeddingService:
         vector_size: Optional[int] = None,
     ):
         self.provider = provider or settings.EMBEDDING_PROVIDER
-        self.api_key = api_key or settings.OPENAI_API_KEY
-        self.model = model or settings.OPENAI_EMBEDDING_MODEL
         self.vector_size = vector_size or settings.QDRANT_VECTOR_SIZE
 
+        if self.provider == "openrouter":
+            self.api_key = api_key or settings.OPENROUTER_API_KEY
+            self.model = model or settings.OPENROUTER_EMBEDDING_MODEL
+        else:
+            self.api_key = api_key or settings.OPENAI_API_KEY
+            self.model = model or settings.OPENAI_EMBEDDING_MODEL
+
         self._openai_client = None
-        if self.provider == "openai" and self.api_key:
+        if self.provider == "openrouter" and self.api_key:
+            default_headers = {}
+            if settings.OPENROUTER_HTTP_REFERER:
+                default_headers["HTTP-Referer"] = settings.OPENROUTER_HTTP_REFERER
+            if settings.OPENROUTER_TITLE:
+                default_headers["X-Title"] = settings.OPENROUTER_TITLE
+            self._openai_client = openai.OpenAI(
+                base_url=settings.OPENROUTER_BASE_URL,
+                api_key=self.api_key,
+                default_headers=default_headers if default_headers else None,
+            )
+        elif self.provider == "openai" and self.api_key:
             self._openai_client = openai.OpenAI(api_key=self.api_key)
 
     def embed_text(self, text: str) -> List[float]:
@@ -34,7 +50,7 @@ class EmbeddingService:
         if not texts:
             return []
 
-        if self.provider == "openai" and self._openai_client:
+        if self.provider in ["openai", "openrouter"] and self._openai_client:
             try:
                 response = self._openai_client.embeddings.create(
                     input=texts,
@@ -42,10 +58,10 @@ class EmbeddingService:
                 )
                 return [item.embedding for item in response.data]
             except Exception as e:
-                logger.error(f"OpenAI embedding generation failed: {e}")
+                logger.error(f"{self.provider.capitalize()} embedding generation failed: {e}")
                 # Fall back to mock if in development / test without key
                 if settings.APP_ENV in ["development", "test"]:
-                    logger.warning("Falling back to deterministic mock embedding for development")
+                    logger.warning(f"Falling back to deterministic mock embedding for development ({self.provider})")
                     return [self._generate_mock_embedding(t) for t in texts]
                 raise e
 

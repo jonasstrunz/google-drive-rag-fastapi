@@ -1,7 +1,5 @@
 from typing import List, Optional
 
-import openai
-
 from src.app.core.config import settings
 from src.app.core.logging import logger
 from src.app.schemas.rag import (
@@ -10,7 +8,6 @@ from src.app.schemas.rag import (
     ChunkMetadata,
     SearchQuery,
     SearchResponse,
-    SearchResultItem,
     SourceCitation,
     SyncDriveRequest,
     SyncDriveResult,
@@ -18,17 +15,8 @@ from src.app.schemas.rag import (
 from src.app.services.chunker import TextChunker
 from src.app.services.embedding import EmbeddingService
 from src.app.services.google_drive import GoogleDriveService
+from src.app.services.llm import LLMService
 from src.app.services.qdrant_store import QdrantVectorStore
-
-SYSTEM_PROMPT = """You are an intelligent knowledge assistant that answers questions based on documents retrieved from Google Drive.
-Analyze the provided Context Sources carefully and answer the user's question accurately and concisely.
-
-Rules:
-1. Ground your answer in the provided Context Sources.
-2. If the context does not contain enough information to answer the question, state clearly that the answer cannot be found in the indexed documents.
-3. Cite source files by mentioning [File: <filename>] when referring to specific facts.
-4. Be clear, direct, and helpful.
-"""
 
 
 class RAGPipeline:
@@ -37,19 +25,17 @@ class RAGPipeline:
         drive_service: Optional[GoogleDriveService] = None,
         vector_store: Optional[QdrantVectorStore] = None,
         embedding_service: Optional[EmbeddingService] = None,
+        llm_service: Optional[LLMService] = None,
         chunker: Optional[TextChunker] = None,
     ):
         self.drive_service = drive_service or GoogleDriveService()
         self.vector_store = vector_store or QdrantVectorStore()
         self.embedding_service = embedding_service or EmbeddingService()
+        self.llm_service = llm_service or LLMService()
         self.chunker = chunker or TextChunker(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
         )
-
-        self._openai_client = None
-        if settings.OPENAI_API_KEY:
-            self._openai_client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
     def sync_google_drive(self, request: SyncDriveRequest) -> SyncDriveResult:
         """Syncs and embeds files from Google Drive into Qdrant."""
@@ -181,36 +167,11 @@ class RAGPipeline:
                 model_used="none",
             )
 
-        # Build context prompt
-        context_parts = []
-        for i, item in enumerate(search_res.results, 1):
-            source_header = f"[Source {i}: File '{item.metadata.file_name}', Chunk {item.metadata.chunk_index + 1}/{item.metadata.total_chunks}]"
-            context_parts.append(f"{source_header}\n{item.text}")
-
-        context_str = "\n\n---\n\n".join(context_parts)
-        user_prompt = f"Context Sources:\n{context_str}\n\nQuestion: {req.question}\n\nAnswer:"
-
-        answer = ""
-        model_name = settings.OPENAI_CHAT_MODEL
-
-        if self._openai_client and settings.OPENAI_API_KEY:
-            try:
-                response = self._openai_client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=0.2,
-                )
-                answer = response.choices[0].message.content or ""
-            except Exception as e:
-                logger.error(f"OpenAI completion error: {e}")
-                answer = self._generate_fallback_answer(req.question, search_res.results)
-                model_name = "extractive-fallback"
-        else:
-            answer = self._generate_fallback_answer(req.question, search_res.results)
-            model_name = "extractive-fallback"
+        # Generate answer using unified LLM service
+        answer, model_used = self.llm_service.generate_answer(
+            question=req.question,
+            results=search_res.results,
+        )
 
         avg_score = (
             sum(c.score for c in citations) / len(citations) if citations else 0.0
@@ -221,14 +182,5 @@ class RAGPipeline:
             answer=answer,
             citations=citations,
             confidence_score=round(avg_score, 4),
-            model_used=model_name,
-        )
-
-    @staticmethod
-    def _generate_fallback_answer(question: str, results: List[SearchResultItem]) -> str:
-        """Deterministic extractive response when no live LLM API key is present."""
-        top_snippet = results[0]
-        return (
-            f"Based on [{top_snippet.metadata.file_name}]:\n\n"
-            f"{top_snippet.text}"
+            model_used=model_used,
         )

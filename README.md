@@ -29,9 +29,11 @@ A production-ready Retrieval-Augmented Generation (RAG) backend service that con
    - Rich metadata storage and payload filtering by `file_id`.
    - Idempotent re-sync with point clean-up.
 
-5. **Semantic Search & Citation-Backed RAG QA**:
+5. **Multi-Provider LLM & Semantic Search & Citation-Backed RAG QA**:
+   - Support for **OpenRouter** (Claude 3.5 Sonnet, DeepSeek, Llama 3, Mistral, etc.) and **OpenAI** (GPT-4o, GPT-4o-mini).
+   - Automatic failover support between OpenRouter and OpenAI.
    - `/api/v1/rag/search`: Semantic vector retrieval returning ranked chunks with similarity scores.
-   - `/api/v1/rag/ask`: Full RAG pipeline extracting relevant context, prompting LLM (OpenAI `gpt-4o-mini` or fallback extractor), and providing structured source citations.
+   - `/api/v1/rag/ask`: Full RAG pipeline extracting relevant context, prompting LLM (OpenRouter / OpenAI or fallback extractor), and providing structured source citations.
 
 ---
 
@@ -58,9 +60,10 @@ A production-ready Retrieval-Augmented Generation (RAG) backend service that con
 │       │   └── rag.py        # Pydantic data schemas
 │       ├── services/
 │       │   ├── chunker.py    # Token-aware sliding window chunker
-│       │   ├── embedding.py  # OpenAI & Mock embedding service
+│       │   ├── embedding.py  # OpenAI, OpenRouter & Mock embeddings
 │       │   ├── google_auth.py# Google OAuth2 & Token service
 │       │   ├── google_drive.py# Drive API client & text extraction
+│       │   ├── llm.py         # Unified LLM provider (OpenRouter / OpenAI)
 │       │   ├── qdrant_store.py# Qdrant client & vector operations
 │       │   └── rag_pipeline.py# Sync, Search, & QA orchestration
 │       └── main.py           # FastAPI application entrypoint
