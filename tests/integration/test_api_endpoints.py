@@ -1,46 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
-from fastapi.testclient import TestClient
-
-from src.app.api.deps import get_auth_service, get_drive_service, get_rag_pipeline
-from src.app.main import create_app
-from src.app.schemas.rag import DriveFileMetadata, TokenInfo
-from src.app.services.rag_pipeline import RAGPipeline
-
-
-@pytest.fixture
-def client(in_memory_qdrant_store, mock_embedding_service, auth_service):
-    app = create_app()
-
-    # Mock Drive Service
-    mock_drive = MagicMock()
-    file_metadata = DriveFileMetadata(
-        id="file_abc_123",
-        name="Architecture_Guide.md",
-        mime_type="text/markdown",
-        size=1500,
-        web_view_link="https://drive.google.com/architecture",
-    )
-    mock_drive.list_files.return_value = [file_metadata]
-    mock_drive.get_file_metadata.return_value = file_metadata
-    mock_drive.extract_file_content.return_value = (
-        "Google Drive RAG architecture integrates FastAPI endpoints with Qdrant vector database.",
-        file_metadata,
-    )
-
-    rag_pipeline = RAGPipeline(
-        drive_service=mock_drive,
-        vector_store=in_memory_qdrant_store,
-        embedding_service=mock_embedding_service,
-    )
-
-    app.dependency_overrides[get_auth_service] = lambda: auth_service
-    app.dependency_overrides[get_drive_service] = lambda: mock_drive
-    app.dependency_overrides[get_rag_pipeline] = lambda: rag_pipeline
-
-    with TestClient(app) as test_client:
-        yield test_client
+from src.app.schemas.rag import TokenInfo
 
 
 def test_health_check(client):

@@ -184,3 +184,44 @@ class RAGPipeline:
             confidence_score=round(avg_score, 4),
             model_used=model_used,
         )
+
+    def ingest_direct_text(
+        self,
+        text_content: str,
+        filename: str,
+        file_id: str,
+        mime_type: str = "text/plain",
+        file_size: Optional[int] = None,
+        custom_chunker: Optional[TextChunker] = None,
+    ) -> int:
+        """Ingests raw text directly, chunks, embeds and upserts to Qdrant."""
+        if not text_content.strip():
+            return 0
+
+        chunker = custom_chunker or self.chunker
+        self.vector_store.delete_by_file_id(file_id)
+
+        chunks = chunker.split_text(text_content)
+        if not chunks:
+            return 0
+
+        embeddings = self.embedding_service.embed_batch(chunks)
+        metadatas = [
+            ChunkMetadata(
+                file_id=file_id,
+                file_name=filename,
+                mime_type=mime_type,
+                chunk_index=i,
+                total_chunks=len(chunks),
+                char_count=len(chunk_text),
+                web_view_link=f"local://upload/{filename}",
+                extra={"file_size": file_size or len(text_content.encode("utf-8")), "source": "direct_upload"},
+            )
+            for i, chunk_text in enumerate(chunks)
+        ]
+
+        return self.vector_store.upsert_chunks(
+            chunks=chunks,
+            embeddings=embeddings,
+            metadatas=metadatas,
+        )

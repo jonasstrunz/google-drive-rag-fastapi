@@ -170,6 +170,20 @@ class GoogleDriveService:
         return text_content.strip(), metadata
 
     @staticmethod
+    def extract_text_from_bytes(bytes_data: bytes, filename: str, mime_type: Optional[str] = None) -> str:
+        """Extract clean text directly from raw bytes given filename or mime type."""
+        ext = filename.lower().split(".")[-1] if "." in filename else ""
+        if ext == "pdf" or mime_type == "application/pdf":
+            return GoogleDriveService._extract_pdf_text(bytes_data)
+        elif (
+            ext == "docx"
+            or mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ):
+            return GoogleDriveService._extract_docx_text(bytes_data)
+        else:
+            return bytes_data.decode("utf-8", errors="ignore").strip()
+
+    @staticmethod
     def _extract_pdf_text(pdf_bytes: bytes) -> str:
         pdf_file = io.BytesIO(pdf_bytes)
         reader = PdfReader(pdf_file)

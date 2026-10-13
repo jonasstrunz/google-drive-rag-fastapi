@@ -126,6 +126,44 @@ class AskQuestionResponse(BaseModel):
     model_used: str
 
 
+class LLMConfig(BaseModel):
+    llm_provider: str = Field("openrouter", description="'openrouter', 'openai', or 'fallback'")
+    openai_api_key: Optional[str] = None
+    openai_chat_model: str = "gpt-4o-mini"
+    openrouter_api_key: Optional[str] = None
+    openrouter_chat_model: str = "anthropic/claude-3.5-sonnet"
+    embedding_provider: str = Field("openai", description="'openai', 'openrouter', or 'mock'")
+    openai_embedding_model: str = "text-embedding-3-small"
+    openrouter_embedding_model: str = "openai/text-embedding-3-small"
+
+
+class LLMConfigStatusResponse(BaseModel):
+    llm_provider: str
+    embedding_provider: str
+    openai_chat_model: str
+    openai_embedding_model: str
+    openrouter_chat_model: str
+    openrouter_embedding_model: str
+    has_openai_key: bool
+    has_openrouter_key: bool
+    status: str = "configured"
+
+
+class FileUploadResult(BaseModel):
+    filename: str
+    file_id: str
+    size: int
+    chunks_created: int
+    status: str
+    error: Optional[str] = None
+
+
+class BatchUploadResponse(BaseModel):
+    total_files: int
+    total_chunks: int
+    results: List[FileUploadResult]
+
+
 # System / Health
 class HealthResponse(BaseModel):
     status: str

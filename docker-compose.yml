@@ -23,10 +23,24 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:8000/api/v1/auth/callback}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openrouter}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-openai}
     depends_on:
       - qdrant
     volumes:
       - ./data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gdrive_rag_frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - api
     restart: unless-stopped
 
 volumes:

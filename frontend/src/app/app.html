@@ -1,0 +1,541 @@
+<div class="rag-app-container">
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="logo-mark">
+        <span class="logo-icon">▲</span>
+      </div>
+      <div>
+        <h1 class="brand-title">Drive<span class="brand-gradient">RAG</span></h1>
+        <p class="brand-subtitle">Google Drive & Document Vector Intelligence</p>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button 
+        class="nav-tab-btn" 
+        [class.active]="activeTab() === 'chat'" 
+        (click)="activeTab.set('chat')">
+        <span class="tab-icon">💬</span>
+        <span>Search & Chat</span>
+      </button>
+
+      <button 
+        class="nav-tab-btn" 
+        [class.active]="activeTab() === 'drive'" 
+        (click)="activeTab.set('drive')">
+        <span class="tab-icon">📁</span>
+        <span>Google Drive</span>
+        <span class="badge" *ngIf="driveFiles().length > 0">{{ driveFiles().length }}</span>
+      </button>
+
+      <button 
+        class="nav-tab-btn" 
+        [class.active]="activeTab() === 'upload'" 
+        (click)="activeTab.set('upload')">
+        <span class="tab-icon">📤</span>
+        <span>Upload Files & ZIP</span>
+      </button>
+
+      <button 
+        class="nav-tab-btn" 
+        [class.active]="activeTab() === 'settings'" 
+        (click)="activeTab.set('settings')">
+        <span class="tab-icon">⚙️</span>
+        <span>LLM & Embeddings</span>
+      </button>
+    </nav>
+
+    <!-- Health / Status Pill -->
+    <div class="header-status">
+      <div class="status-pill" [class.healthy]="health()?.status === 'healthy'" [class.degraded]="health()?.status !== 'healthy'">
+        <span class="status-dot"></span>
+        <span class="status-text">{{ health()?.status === 'healthy' ? 'Qdrant Connected' : 'Connecting...' }}</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Toast Notification -->
+  <div class="toast" *ngIf="toastMessage()" [class]="toastMessage()?.type">
+    <span class="toast-indicator"></span>
+    <span class="toast-body">{{ toastMessage()?.text }}</span>
+  </div>
+
+  <!-- Main View Area -->
+  <main class="main-content">
+
+    <!-- 1. CHAT & SEARCH TAB -->
+    <section class="tab-pane chat-pane" *ngIf="activeTab() === 'chat'">
+      <div class="chat-layout">
+        
+        <!-- Left: Chat Stream & Answer Box -->
+        <div class="chat-main">
+          
+          <!-- Welcome / Empty State -->
+          <div class="chat-welcome" *ngIf="chatHistory().length === 0">
+            <div class="welcome-badge">Semantic QA & Document Retrieval</div>
+            <h2 class="welcome-heading">Ask anything about your indexed documents.</h2>
+            <p class="welcome-desc">
+              Connect your Google Drive or upload files to start querying across your docs, spreadsheets, slides, PDFs, and archives with verified citations.
+            </p>
+
+            <div class="quick-prompts">
+              <button class="prompt-chip" (click)="questionInput.set('Summarize the main points of the latest documentation.'); askQuestion()">
+                💡 "Summarize main points in documentation"
+              </button>
+              <button class="prompt-chip" (click)="questionInput.set('What are the key technical architecture decisions?'); askQuestion()">
+                🏗️ "Key architecture decisions"
+              </button>
+              <button class="prompt-chip" (click)="questionInput.set('List any action items or open questions.'); askQuestion()">
+                📌 "List action items or open questions"
+              </button>
+            </div>
+          </div>
+
+          <!-- Conversation History -->
+          <div class="conversation-stream" *ngIf="chatHistory().length > 0">
+            <div 
+              class="message-bubble-wrapper" 
+              *ngFor="let msg of chatHistory()" 
+              [class.user-wrapper]="msg.type === 'user'" 
+              [class.assistant-wrapper]="msg.type === 'assistant'">
+              
+              <div class="message-bubble" [class.user-bubble]="msg.type === 'user'" [class.assistant-bubble]="msg.type === 'assistant'">
+                <div class="bubble-header">
+                  <span class="sender-tag">{{ msg.type === 'user' ? 'You' : 'Assistant' }}</span>
+                  <span class="model-tag" *ngIf="msg.model">{{ msg.model }}</span>
+                </div>
+
+                <div class="bubble-content">
+                  <p class="message-text">{{ msg.content }}</p>
+                </div>
+
+                <!-- Citations List -->
+                <div class="citations-container" *ngIf="msg.citations && msg.citations.length > 0">
+                  <h4 class="citations-title">Verified Context Sources:</h4>
+                  <div class="citations-grid">
+                    <div class="citation-card" *ngFor="let cit of msg.citations">
+                      <div class="citation-top">
+                        <span class="citation-file">📄 {{ cit.file_name }}</span>
+                        <span class="citation-score">{{ (cit.score * 100).toFixed(0) }}% match</span>
+                      </div>
+                      <p class="citation-snippet">"{{ cit.text_snippet }}"</p>
+                      <a *ngIf="cit.web_view_link" [href]="cit.web_view_link" target="_blank" class="citation-link">
+                        Open Source ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Answering Loading Indicator -->
+            <div class="message-bubble-wrapper assistant-wrapper" *ngIf="isAnswering()">
+              <div class="message-bubble assistant-bubble loading-bubble">
+                <div class="typing-indicator">
+                  <span></span><span></span><span></span>
+                </div>
+                <span class="loading-label">Searching vector store & generating answer...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Bar -->
+          <div class="chat-input-bar">
+            <div class="input-container">
+              <textarea 
+                class="chat-textarea" 
+                placeholder="Ask a question or enter search keywords..." 
+                [(ngModel)]="questionInput" 
+                (keydown.enter)="$event.preventDefault(); askQuestion()"
+                rows="2"></textarea>
+              
+              <div class="input-actions">
+                <button 
+                  class="btn-secondary" 
+                  [disabled]="isSearching() || !questionInput().trim()" 
+                  (click)="quickSearch()" 
+                  title="Search raw vector chunks">
+                  <span>{{ isSearching() ? 'Searching...' : '🔍 Search Chunks' }}</span>
+                </button>
+
+                <button 
+                  class="btn-primary" 
+                  [disabled]="isAnswering() || !questionInput().trim()" 
+                  (click)="askQuestion()">
+                  <span>{{ isAnswering() ? 'Thinking...' : 'Ask AI ✦' }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right: Raw Search Results Inspector (When searched) -->
+        <aside class="search-inspector" *ngIf="activeSearchResults()">
+          <div class="inspector-header">
+            <h3>Vector Search Matches ({{ activeSearchResults()?.total_results }})</h3>
+            <button class="close-btn" (click)="activeSearchResults.set(null)">✕</button>
+          </div>
+          <div class="inspector-scroll">
+            <div class="search-item-card" *ngFor="let item of activeSearchResults()?.results">
+              <div class="item-meta">
+                <span class="file-badge">📄 {{ item.metadata.file_name }}</span>
+                <span class="score-badge">{{ (item.score * 100).toFixed(1) }}%</span>
+              </div>
+              <p class="item-text">{{ item.text }}</p>
+              <div class="item-footer">
+                <span>Chunk {{ item.metadata.chunk_index + 1 }} of {{ item.metadata.total_chunks }}</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- 2. GOOGLE DRIVE TAB -->
+    <section class="tab-pane" *ngIf="activeTab() === 'drive'">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Google Drive Connection</h2>
+            <p class="panel-subtitle">Authorize access to your Google Drive to index documents, presentations, and spreadsheets directly.</p>
+          </div>
+
+          <div class="auth-action-area">
+            <div *ngIf="authStatus()?.authenticated" class="auth-connected-banner">
+              <span class="status-badge connected">● Connected ({{ authStatus()?.email || userId() }})</span>
+              <button class="btn-danger-outline" (click)="disconnectGoogleDrive()">Disconnect</button>
+            </div>
+
+            <button 
+              *ngIf="!authStatus()?.authenticated" 
+              class="btn-google" 
+              (click)="connectGoogleDrive()">
+              <span class="google-g">G</span> Connect with Google Drive
+            </button>
+          </div>
+        </div>
+
+        <!-- Drive Files Table -->
+        <div class="drive-content-area" *ngIf="authStatus()?.authenticated">
+          
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <button class="btn-small" (click)="loadDriveFiles()" [disabled]="isLoadingDrive()">
+                🔄 Refresh Files
+              </button>
+              <button class="btn-small" (click)="selectAllDriveFiles()">Select All</button>
+              <button class="btn-small" (click)="deselectAllDriveFiles()">Deselect All</button>
+            </div>
+
+            <div class="toolbar-right">
+              <span class="selected-count">
+                {{ selectedDriveFileIds().size }} of {{ driveFiles().length }} files selected
+              </span>
+              <button 
+                class="btn-primary" 
+                [disabled]="isSyncingDrive() || driveFiles().length === 0" 
+                (click)="syncDriveFiles()">
+                {{ isSyncingDrive() ? 'Syncing to Vector Store...' : '⚡ Index Selected to Qdrant' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Sync Progress Summary -->
+          <div class="sync-banner" *ngIf="driveSyncResult()">
+            <div class="sync-banner-title">✅ Google Drive Sync Completed!</div>
+            <div class="sync-stats">
+              <span>Files processed: <strong>{{ driveSyncResult()?.files_processed }}</strong></span>
+              <span>Chunks generated: <strong>{{ driveSyncResult()?.chunks_created }}</strong></span>
+              <span>Skipped/Empty: <strong>{{ driveSyncResult()?.skipped_files }}</strong></span>
+            </div>
+            <div class="sync-errors" *ngIf="driveSyncResult()?.errors?.length">
+              <p class="err-title">Warnings / Errors:</p>
+              <ul>
+                <li *ngFor="let err of driveSyncResult()?.errors">{{ err }}</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Files Table -->
+          <div class="table-wrapper">
+            <table class="drive-table">
+              <thead>
+                <tr>
+                  <th style="width: 40px;"></th>
+                  <th>File Name</th>
+                  <th>Format / Mime</th>
+                  <th>Size</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let file of driveFiles()" [class.selected-row]="selectedDriveFileIds().has(file.id)">
+                  <td>
+                    <input 
+                      type="checkbox" 
+                      [checked]="selectedDriveFileIds().has(file.id)" 
+                      (change)="toggleDriveFileSelection(file.id)" />
+                  </td>
+                  <td>
+                    <div class="file-name-cell">
+                      <span class="file-icon">📄</span>
+                      <span class="name-text">{{ file.name }}</span>
+                    </div>
+                  </td>
+                  <td><span class="mime-tag">{{ file.mime_type.split('.').pop() }}</span></td>
+                  <td>{{ formatBytes(file.size) }}</td>
+                  <td>
+                    <a *ngIf="file.web_view_link" [href]="file.web_view_link" target="_blank" class="table-link">
+                      Open Drive ↗
+                    </a>
+                  </td>
+                </tr>
+
+                <tr *ngIf="driveFiles().length === 0 && !isLoadingDrive()">
+                  <td colspan="5" class="empty-table-cell">No compatible documents found in Google Drive.</td>
+                </tr>
+                <tr *ngIf="isLoadingDrive()">
+                  <td colspan="5" class="empty-table-cell">Loading files from Google Drive...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+        <!-- Unauthenticated Warning -->
+        <div class="unauth-state" *ngIf="!authStatus()?.authenticated">
+          <div class="unauth-icon">🔒</div>
+          <h3>Google Drive Not Connected</h3>
+          <p>Click "Connect with Google Drive" above to authenticate your account and load files.</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 3. FILE & ZIP UPLOAD TAB -->
+    <section class="tab-pane" *ngIf="activeTab() === 'upload'">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Upload Local Files & ZIP Archives</h2>
+            <p class="panel-subtitle">Upload PDFs, DOCX, Markdown, Text, or full ZIP packages. All content is automatically extracted, token-chunked, embedded, and indexed into Qdrant.</p>
+          </div>
+        </div>
+
+        <!-- Dropzone Area -->
+        <div 
+          class="dropzone-area" 
+          (dragover)="onDragOver($event)" 
+          (drop)="onFileDrop($event)">
+          
+          <div class="dropzone-content">
+            <div class="dropzone-icon">📦</div>
+            <h3 class="dropzone-heading">Drag and drop files or ZIP archive here</h3>
+            <p class="dropzone-sub">Supports .pdf, .docx, .md, .txt, .csv, .json, and .zip bundles</p>
+            
+            <label class="btn-file-select">
+              <span>Browse Files</span>
+              <input type="file" multiple (change)="onFilesSelected($event)" accept=".pdf,.docx,.doc,.txt,.md,.csv,.json,.zip" />
+            </label>
+          </div>
+
+        </div>
+
+        <!-- Selected Files List -->
+        <div class="selected-files-list" *ngIf="selectedFiles.length > 0">
+          <h4 class="list-title">Selected files for ingestion ({{ selectedFiles.length }})</h4>
+          <div class="file-pills">
+            <div class="file-pill" *ngFor="let f of selectedFiles">
+              <span class="file-pill-name">{{ f.name }}</span>
+              <span class="file-pill-size">{{ formatBytes(f.size) }}</span>
+            </div>
+          </div>
+
+          <!-- Chunking Parameters -->
+          <div class="chunking-controls">
+            <div class="control-group">
+              <label>Chunk Size (tokens):</label>
+              <input type="number" [(ngModel)]="uploadChunkSize" class="num-input" />
+            </div>
+            <div class="control-group">
+              <label>Chunk Overlap (tokens):</label>
+              <input type="number" [(ngModel)]="uploadChunkOverlap" class="num-input" />
+            </div>
+
+            <button 
+              class="btn-primary" 
+              [disabled]="isUploading()" 
+              (click)="uploadSelectedFiles()">
+              {{ isUploading() ? 'Extracting & Indexing...' : '🚀 Ingest to Vector Database' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Upload Summary -->
+        <div class="upload-results-panel" *ngIf="uploadResult()">
+          <h3 class="result-heading">Ingestion Results Summary</h3>
+          <p class="result-stat">Successfully indexed <strong>{{ uploadResult()?.total_files }}</strong> files into <strong>{{ uploadResult()?.total_chunks }}</strong> vector chunks.</p>
+
+          <div class="results-table">
+            <div class="res-row header-row">
+              <span>File</span>
+              <span>Size</span>
+              <span>Chunks</span>
+              <span>Status</span>
+            </div>
+            <div class="res-row" *ngFor="let item of uploadResult()?.results">
+              <span class="filename-col">📄 {{ item.filename }}</span>
+              <span>{{ formatBytes(item.size) }}</span>
+              <span>{{ item.chunks_created }}</span>
+              <span class="status-col" [class.success]="item.status === 'indexed'" [class.failed]="item.status === 'failed'">
+                {{ item.status }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 4. SETTINGS & LLM SETUP TAB -->
+    <section class="tab-pane" *ngIf="activeTab() === 'settings'">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">LLM & Embedding Provider Setup</h2>
+            <p class="panel-subtitle">Configure OpenRouter, OpenAI, models, and API keys. Changes take effect immediately in the runtime pipeline.</p>
+          </div>
+        </div>
+
+        <form class="settings-form" (ngSubmit)="saveLlmConfig()">
+          
+          <div class="form-grid">
+            
+            <!-- Section 1: LLM Question Answering -->
+            <div class="form-section">
+              <h3 class="section-title">🤖 LLM QA Provider</h3>
+              
+              <div class="form-group">
+                <label>Provider:</label>
+                <select [(ngModel)]="llmForm.llm_provider" name="llm_provider" class="form-select">
+                  <option value="openrouter">OpenRouter (Recommended - Multi-model)</option>
+                  <option value="openai">OpenAI (Direct API)</option>
+                  <option value="fallback">Extractive Fallback (Offline / No Key)</option>
+                </select>
+              </div>
+
+              <!-- OpenRouter QA Settings -->
+              <div class="provider-box" *ngIf="llmForm.llm_provider === 'openrouter'">
+                <div class="form-group">
+                  <label>OpenRouter API Key:</label>
+                  <input 
+                    type="password" 
+                    [(ngModel)]="llmForm.openrouter_api_key" 
+                    name="openrouter_api_key" 
+                    placeholder="sk-or-v1-..." 
+                    class="form-input" />
+                  <span class="field-hint">
+                    {{ llmConfigStatus()?.has_openrouter_key ? '✓ Key already configured on backend' : 'Enter API key to activate' }}
+                  </span>
+                </div>
+
+                <div class="form-group">
+                  <label>OpenRouter Chat Model:</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="llmForm.openrouter_chat_model" 
+                    name="openrouter_chat_model" 
+                    placeholder="anthropic/claude-3.5-sonnet" 
+                    class="form-input" />
+                  <span class="field-hint">e.g., anthropic/claude-3.5-sonnet, deepseek/deepseek-chat, meta-llama/llama-3.3-70b-instruct</span>
+                </div>
+              </div>
+
+              <!-- OpenAI QA Settings -->
+              <div class="provider-box" *ngIf="llmForm.llm_provider === 'openai'">
+                <div class="form-group">
+                  <label>OpenAI API Key:</label>
+                  <input 
+                    type="password" 
+                    [(ngModel)]="llmForm.openai_api_key" 
+                    name="openai_api_key" 
+                    placeholder="sk-..." 
+                    class="form-input" />
+                  <span class="field-hint">
+                    {{ llmConfigStatus()?.has_openai_key ? '✓ Key already configured on backend' : 'Enter API key to activate' }}
+                  </span>
+                </div>
+
+                <div class="form-group">
+                  <label>OpenAI Chat Model:</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="llmForm.openai_chat_model" 
+                    name="openai_chat_model" 
+                    placeholder="gpt-4o-mini" 
+                    class="form-input" />
+                  <span class="field-hint">e.g., gpt-4o-mini, gpt-4o</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 2: Embeddings Setup -->
+            <div class="form-section">
+              <h3 class="section-title">📐 Text Embedding Provider</h3>
+
+              <div class="form-group">
+                <label>Embedding Provider:</label>
+                <select [(ngModel)]="llmForm.embedding_provider" name="embedding_provider" class="form-select">
+                  <option value="openai">OpenAI Embeddings</option>
+                  <option value="openrouter">OpenRouter Embeddings</option>
+                  <option value="mock">Deterministic Mock (Development / Local testing)</option>
+                </select>
+              </div>
+
+              <div class="provider-box" *ngIf="llmForm.embedding_provider === 'openai'">
+                <div class="form-group">
+                  <label>OpenAI Embedding Model:</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="llmForm.openai_embedding_model" 
+                    name="openai_embedding_model" 
+                    placeholder="text-embedding-3-small" 
+                    class="form-input" />
+                </div>
+              </div>
+
+              <div class="provider-box" *ngIf="llmForm.embedding_provider === 'openrouter'">
+                <div class="form-group">
+                  <label>OpenRouter Embedding Model:</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="llmForm.openrouter_embedding_model" 
+                    name="openrouter_embedding_model" 
+                    placeholder="openai/text-embedding-3-small" 
+                    class="form-input" />
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Save Button -->
+          <div class="form-footer">
+            <span class="save-msg" *ngIf="configSuccessMessage()">{{ configSuccessMessage() }}</span>
+            <button type="submit" class="btn-primary" [disabled]="isSavingConfig()">
+              {{ isSavingConfig() ? 'Saving Configuration...' : 'Save & Activate Configuration' }}
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </section>
+
+  </main>
+</div>
